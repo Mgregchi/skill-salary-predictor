@@ -6,6 +6,8 @@ const skills = require("./skills");
 const experience = require("./experience");
 const combos = require("./combos");
 const currencies = require("./currencies");
+const { loadData, validatePayload, cache } = require("./fetcher");
+const { createHttpLoader } = require("./httpLoader");
 
 module.exports = {
   baseSalaries,
@@ -13,4 +15,8 @@ module.exports = {
   experience,
   combos,
   currencies,
+  loadData,
+  validatePayload,
+  cache,
+  createHttpLoader,
 };

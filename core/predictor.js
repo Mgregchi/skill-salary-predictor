@@ -5,24 +5,95 @@
  */
 
 const data = require("./data");
+const { loadData, DEFAULT_TTL_MS, DEFAULT_TIMEOUT_MS } = data;
 
 class SalaryPredictor {
   constructor(options = {}) {
     this.region = options.region || "US";
     this.experienceYears = options.experienceYears || 0;
+    this.dataSource = options.dataSource;
     this.modelWeights = this.initializeWeights();
+  }
+
+  defaultWeights(meta = { source: "static" }) {
+    return {
+      baseSalaries: data.baseSalaries,
+      skills: data.skills,
+      experience: data.experience,
+      combos: data.combos,
+      currencies: data.currencies,
+      meta,
+    };
   }
 
   /**
    * Initialize skill weights and base salaries per region
    */
   initializeWeights() {
-    return {
-      baseSalaries: data.baseSalaries,
-      skills: data.skills,
-      experience: data.experience,
-      combos: data.combos,
-    };
+    const source = this.dataSource;
+
+    // Static defaults
+    if (!source || source.mode === "static") {
+      return this.defaultWeights({ source: "static" });
+    }
+
+    // Live / auto mode (with static fallback)
+    const {
+      loader,
+      cacheKey,
+      ttlMs = DEFAULT_TTL_MS,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+      allowStale = true,
+      onWarning,
+    } = source;
+
+    // Synchronously kick off load; for simplicity we block constructor with async load via deasync-like pattern is not desired.
+    // Instead, we require the loader to be sync-resolvable via async/await before use (constructor is synchronous).
+    // So we instantiate with a promise and throw if not resolved when used.
+    this._dataLoadPromise = loadData({
+      loader,
+      cacheKey,
+      ttlMs,
+      timeoutMs,
+      allowStale,
+      onWarning,
+    });
+
+    // Temporarily return static; actual weights will be replaced on first predictAsync call.
+    return this.defaultWeights({ source: "static-pending-live" });
+  }
+
+  async ensureLiveData() {
+    if (!this._dataLoadPromise) return;
+    if (this._dataLoaded) return;
+
+    try {
+      const result = await this._dataLoadPromise;
+      this.modelWeights = {
+        baseSalaries: result.data.baseSalaries,
+        skills: result.data.skills,
+        experience: result.data.experience,
+        combos: result.data.combos,
+        currencies: result.data.currencies,
+        meta: {
+          source: result.source,
+          stale: result.stale,
+          fetchedAt: result.fetchedAt,
+        },
+      };
+    } catch (error) {
+      const onWarning = this.dataSource?.onWarning;
+      if (onWarning) {
+        onWarning("Falling back to static data", { error: error.message });
+      }
+      this.modelWeights = this.defaultWeights({
+        source: "static-fallback",
+        error: error.message,
+      });
+    } finally {
+      this._dataLoaded = true;
+      this._dataLoadPromise = null;
+    }
   }
 
   /**
@@ -31,6 +102,12 @@ class SalaryPredictor {
    * @returns {Object} Prediction result
    */
   predict(skills) {
+    // If live data was requested, ensure it's loaded before computing.
+    if (this._dataLoadPromise) {
+      throw new Error(
+        "predict called before live data loaded; use predictAsync() or wait for refreshData()"
+      );
+    }
     const startTime = Date.now();
 
     // Normalize skills to lowercase
@@ -128,6 +205,16 @@ class SalaryPredictor {
     return skillSets.map((skills) => this.predict(skills));
   }
 
+  async predictAsync(skills) {
+    await this.ensureLiveData();
+    return this.predict(skills);
+  }
+
+  async batchPredictAsync(skillSets) {
+    await this.ensureLiveData();
+    return skillSets.map((skills) => this.predict(skills));
+  }
+
   /**
    * Calculate confidence score
    */
@@ -142,7 +229,7 @@ class SalaryPredictor {
    * Get currency for region
    */
   getCurrency(region) {
-    return data.currencies[region] || "USD";
+    return this.modelWeights.currencies[region] || "USD";
   }
 
   /**
@@ -173,6 +260,36 @@ class SalaryPredictor {
   setExperience(years) {
     this.experienceYears = years;
     return this;
+  }
+
+  /**
+   * Refresh live data manually
+   */
+  async refreshData() {
+    if (!this.dataSource || this.dataSource.mode === "static") return this.modelWeights;
+    this._dataLoaded = false;
+    this._dataLoadPromise = loadData({
+      loader: this.dataSource.loader,
+      cacheKey: this.dataSource.cacheKey,
+      ttlMs: this.dataSource.ttlMs ?? DEFAULT_TTL_MS,
+      timeoutMs: this.dataSource.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      allowStale: this.dataSource.allowStale ?? true,
+      onWarning: this.dataSource.onWarning,
+    });
+    await this.ensureLiveData();
+    return this.modelWeights;
+  }
+
+  /**
+   * Get data source info
+   */
+  getDataInfo() {
+    const meta = this.modelWeights.meta || {};
+    return {
+      source: meta.source || "static",
+      stale: meta.stale || false,
+      fetchedAt: meta.fetchedAt,
+    };
   }
 }
 

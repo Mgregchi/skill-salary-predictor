@@ -103,31 +103,29 @@ describe("JobQueue", () => {
     expect(job.status).toBe("pending");
   });
 
-  test("completes job and returns result", async (done) => {
+  test("completes job and returns result", async () => {
     const job = await queue.scheduleJob(["Python"], {
       region: "US",
       experienceYears: 3,
     });
 
-    setTimeout(() => {
-      const status = queue.getJob(job.jobId);
-      expect(status.status).toBe("completed");
-      expect(status.result).toBeDefined();
-      expect(status.result.estimatedSalary).toBeGreaterThan(0);
-      done();
-    }, 100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const status = queue.getJob(job.jobId);
+
+    expect(status.status).toBe("completed");
+    expect(status.result).toBeDefined();
+    expect(status.result.estimatedSalary).toBeGreaterThan(0);
   });
 
-  test("handles job errors", async (done) => {
+  test("handles job errors", async () => {
     // Simulate error by providing invalid data
     const job = await queue.scheduleJob(null, {});
 
-    setTimeout(() => {
-      const status = queue.getJob(job.jobId);
-      expect(status.status).toBe("failed");
-      expect(status.error).toBeDefined();
-      done();
-    }, 100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const status = queue.getJob(job.jobId);
+
+    expect(status.status).toBe("failed");
+    expect(status.error).toBeDefined();
   });
 });
 

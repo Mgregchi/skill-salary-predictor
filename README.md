@@ -11,6 +11,7 @@ Open-source, modular salary prediction system with job scheduling and webhook no
 - 💼 Experience-based adjustments
 - 🔗 Skill combination bonuses
 - 📊 Confidence scoring
+- 🛰️ Optional live data loaders with caching + static fallback
 
 🔧 **Technical Features**
 - ⚡ Built with Fastify (high performance)
@@ -307,6 +308,40 @@ const result2 = predictor
   .predict(['Python', 'Django', 'PostgreSQL']);
 ```
 
+### Live Data (optional)
+
+You can keep the model data fresh by supplying your own loader (no vendor lock). A helper is provided for HTTP JSON sources.
+
+```javascript
+const { SalaryPredictor } = require('./core/predictor');
+const { createHttpLoader } = require('./core/data');
+
+const loader = createHttpLoader({
+  url: 'https://your-endpoint.com/salary-data.json',
+  token: process.env.SALARY_DATA_TOKEN, // optional
+  headers: { 'x-api-key': process.env.SALARY_DATA_KEY }, // optional
+  timeoutMs: 3000,
+  transform: (json) => json.payload, // optional: shape the response
+});
+
+const predictor = new SalaryPredictor({
+  region: 'US',
+  dataSource: {
+    mode: 'live',        // 'static' | 'live' | 'auto' (static fallback)
+    loader,              // async function returning { baseSalaries, skills, experience, combos, currencies }
+    cacheKey: 'your-endpoint', // ensure shared cache between instances
+    ttlMs: 10 * 60 * 1000,     // refresh every 10m
+    timeoutMs: 3000,
+    allowStale: true,    // serve stale cache if refresh fails
+    onWarning: console.warn, // optional hook for fallbacks/timeouts
+  },
+});
+
+// Use async variants when relying on live data
+const result = await predictor.predictAsync(['Python', 'TensorFlow']);
+console.log(predictor.getDataInfo()); // { source: 'live' | 'cache' | 'static-fallback', stale, fetchedAt }
+```
+
 ## Database Setup
 
 ### Migrations
@@ -413,7 +448,7 @@ Contributions welcome! Please:
 
 ## License
 
-MIT License - feel free to use in your projects!
+[MIT License](LICENSE) - feel free to use in your projects!
 
 ## Support
 

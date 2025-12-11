@@ -1,0 +1,74 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Prediction {
+  id               String   @id @default(cuid())
+  skills           String
+  region           String
+  experienceYears  Int      @default(0)
+  estimatedSalary  Int
+  minSalary        Int
+  maxSalary        Int
+  confidence       Int
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([region])
+  @@index([createdAt])
+  @@index([estimatedSalary])
+  @@map("predictions")
+}
+
+model Job {
+  id              String    @id @default(cuid())
+  jobId           String    @unique
+  skills          String
+  region          String    @default("US")
+  experienceYears Int       @default(0)
+  status          String    @default("pending")
+  webhookUrl      String?
+  metadata        Json?
+  result          Json?
+  error           String?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("jobs")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  apiKey    String   @unique @default(uuid())
+  region    String   @default("US")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model ApiUsage {
+  id         String   @id @default(cuid())
+  userId     String?
+  endpoint   String
+  statusCode Int
+  duration   Int
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("api_usage")
+}
